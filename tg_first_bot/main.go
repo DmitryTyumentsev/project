@@ -10,7 +10,7 @@ import (
 
 const (
 	tgBotHost   = "api.telegram.org"
-	basePath    = "storage"
+	basePath    = "storage/files"
 	startOffset = 0
 )
 
@@ -23,6 +23,5 @@ func main() {
 	)
 	if err := newConsumer.Start(); err != nil {
 		log.Printf("Failed start()", err)
-		panic("failed Start()")
 	}
 }

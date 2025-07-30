@@ -6,6 +6,7 @@ import (
 	"example.com/errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"path"
@@ -33,7 +34,7 @@ func (c *Client) Update(limit, offset int) ([]Update, error) {
 
 	data, err := c.doRequest(q, methodGetUpdates)
 	if err != nil {
-		return nil, fmt.Errorf("can't got response body %w", err)
+		return nil, fmt.Errorf("can't got response body method getUpdates %w", err)
 	}
 
 	var resp Response
@@ -46,19 +47,29 @@ func (c *Client) Update(limit, offset int) ([]Update, error) {
 }
 
 func (c *Client) SendMessage(chatID int, text string) error {
+	log.Println("Начинаем выполнять SendMessage...")
+	log.Printf("ChatID: %d", chatID)
 	q := url.Values{}
 	q.Add("text", text)
-	q.Add("chatID", strconv.Itoa(chatID))
+	q.Add("chat_id", strconv.Itoa(chatID))
 
 	_, err := c.doRequest(q, methodSendMessage)
 	if err != nil {
-		return fmt.Errorf("can't got response body %w", err)
+		return fmt.Errorf("can't got response body method sendMessage %w", err)
 	}
 
+	//var resp Response
+	//if err := json.Unmarshal(data, &resp); err != nil {
+	//	return fmt.Errorf("can't do Unmarshal %x", err)
+	//}
+	//if !resp.Ok {
+	//	return fmt.Errorf(" failed: resp !Ok %x", err)
+	//}
 	return nil
 }
 
 func (c *Client) doRequest(query url.Values, method string) (data []byte, err error) {
+	log.Println("Начинаем выполнять doRequest...")
 	defer func() { err = errors.WrapIfErr("failed func doRequest", err) }()
 
 	u := url.URL{

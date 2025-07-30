@@ -6,7 +6,6 @@ import (
 	errors2 "errors"
 	"example.com/errors"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"os"
@@ -17,13 +16,16 @@ const (
 	perm = 0644
 )
 
-func (b InternalBasePath) Save(p Page) error { // как задавать InternalBasePath?
+func (b InternalBasePath) Save(p Page) error {
 	fName, _ := hash(p)
 	if fName == "" {
 		return errors2.New("fName is empty")
 	}
+	if err := os.MkdirAll(b.BasePath, perm); err != nil {
+		return errors.WrapIfErr("failed MkdirAll", err)
+	}
 	fPath := filepath.Join(b.BasePath, fName)
-	file, err := os.OpenFile(fPath, os.O_CREATE, perm)
+	file, err := os.Create(fPath)
 	if err != nil {
 		return errors.WrapIfErr("failed create file", err)
 	}
@@ -32,35 +34,32 @@ func (b InternalBasePath) Save(p Page) error { // как задавать Intern
 			log.Printf("failed file closing %v", err)
 		}
 	}()
+	if _, err := file.WriteString(p.TextPage); err != nil {
+		return fmt.Errorf("failed WriteString() in file %x", err)
+	}
 	return nil
 }
 
-func (b InternalBasePath) PickRandom() (*Page, error) { // почему не передаем chatID
+func (b InternalBasePath) PickRandom() (string, error) {
 	files, err := os.ReadDir(b.BasePath)
 	if err != nil {
-		return nil, errors.WrapIfErr("failed ReadDir", err)
+		return "", errors.WrapIfErr("failed ReadDir", err)
 	}
 	if len(files) == 0 {
-		return nil, errors2.New("files were not found in this directory")
+		return "", nil
 	}
 
 	n := len(files)
 	file := files[rand.Intn(n)]
-	fName := filepath.Join(b.BasePath, file.Name())
+	fPath := filepath.Join(b.BasePath, file.Name())
 
-	f, err := os.Open(fName)
+	f, err := os.ReadFile(fPath)
 	if err != nil {
-		return nil, errors.WrapIfErr("failed open file", err)
+		return "", fmt.Errorf("failed ReadFile %x", err)
 	}
-	defer func() {
-		err = f.Close()
-		if err != nil {
-			log.Printf("failed closing open file %s", fName)
-		}
-	}()
+	log.Printf("Метод PickRandom, готовим к отправке TextHref: %s", string(f))
 
-	p, _ := b.decodePage(f)
-	return p, nil
+	return string(f), nil
 }
 
 func (b InternalBasePath) IsExist(p Page) (bool, error) {
@@ -69,37 +68,51 @@ func (b InternalBasePath) IsExist(p Page) (bool, error) {
 		return false, errors2.New("fName is empty")
 	}
 	fPath := filepath.Join(b.BasePath, fName)
-	fInfo, err := os.Stat(fPath)
-	if err != nil && !os.IsNotExist(err) {
+	_, err := os.Stat(fPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
 		return false, errors.WrapIfErr("failed to check path", err)
 	}
-	if fInfo.IsDir() == true {
-		return true, nil
-	}
-
-	return false, nil
+	return true, nil
 }
 
-func (b InternalBasePath) Remove(p *Page) error {
-	fName, _ := hash(*p)
-	if fName == "" {
-		return errors2.New("fName is empty")
+func (b InternalBasePath) Remove(contentPage string) error {
+	files, err := os.ReadDir(b.BasePath)
+	if err != nil {
+		return errors.WrapIfErr("failed ReadDir", err)
 	}
-	fPath := filepath.Join(b.BasePath, fName)
-	if err := os.Remove(fPath); err != nil {
-		return errors.WrapIfErr("couldn't delete the file", err)
+	if len(files) == 0 {
+		log.Println("files were not found in this directory")
+		return nil
 	}
 
+	for _, file := range files {
+		fPath := filepath.Join(b.BasePath, file.Name())
+		contentFile, err := os.ReadFile(fPath)
+		if string(contentFile) == "" {
+			return errors2.New("fName is empty")
+		}
+		if err != nil {
+			return fmt.Errorf("failed os.ReadFile %x", err)
+		}
+		if string(contentFile) == contentPage {
+			if err := os.Remove(fPath); err != nil {
+				return errors.WrapIfErr("couldn't delete the file", err)
+			}
+		}
+	}
 	return nil
 }
 
-func (b InternalBasePath) decodePage(f io.Reader) (*Page, error) {
-	var p Page
-	if err := gob.NewDecoder(f).Decode(&p); err != nil {
-		return nil, fmt.Errorf("failed decode %s", p.TextPage)
-	}
-	return &p, nil
-}
+//func (b InternalBasePath) decodePage(f io.Reader) (*Page, error) {
+//	var p Page
+//	if err := gob.NewDecoder(f).Decode(&p); err != nil {
+//		return nil, fmt.Errorf("failed decode %s", p.TextPage)
+//	}
+//	return &p, nil
+//}
 
 func hash(p Page) (string, error) {
 	h := sha1.New()
@@ -109,5 +122,5 @@ func hash(p Page) (string, error) {
 	if err := gob.NewEncoder(h).Encode(p.ChatID); err != nil {
 		return "", fmt.Errorf("unsuccessful username hashing %v", p.ChatID)
 	}
-	return string(h.Sum(nil)), nil
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }

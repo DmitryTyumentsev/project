@@ -3,51 +3,51 @@ package consumer
 import (
 	"example.com/errors"
 	"example.com/storage"
+	"log"
 	"net/url"
 	"strings"
 )
 
 const (
-	commandHello      = "/hello"
+	commandStart      = "/start"
 	commandPickRandom = "/random"
 	commandDelete     = "/delete"
-	msgHello          = "Привет! Сейчас бот умеет сохранять ссылки и возвращать рандомно одну из сохраненных раз в неделю. \n " +
-		"Если хочешь получить ссылку не дожидаясь недели, отправь команду /random . \n" +
-		"Если хочешь удалить сохраненную ссылку, отправь команду /delete . \n" +
+	msgStart          = "Привет! Сейчас бот умеет сохранять ссылки и возвращать рандомно одну из сохраненных раз в неделю. \n\n" +
+		"Если хочешь получить ссылку не дожидаясь недели, отправь команду /random . \n\n" +
+		"Если хочешь удалить сохраненную ссылку, отправь команду /delete (в разработке). \n\n" +
 		"Если бот прислал ссылку, она автоматически будет удалена"
 	msgOk = "Ссылка успешно сохранена"
 	//msgDeleteOk    = "Ссылка успешно удалена"
 	msgDeleteInfo  = "Пришлите ссылку которую нужно удалить"
 	msgUnknownType = "Не сохранено, это не ссылка. Пришлите ссылку в формате https://www.ww"
 	msgIsExist     = "Такая ссылка уже сохранена"
+	msgNotExist    = "Нет сохраненных ссылок. Сначала пришлите ссылку для сохранения"
 )
 
 func (c *Consumer) doCMD(chatID int, textPage string) error {
 	tPage := strings.TrimSpace(textPage)
+	log.Printf("Получено новое сообщение: %s", tPage)
 
 	switch tPage {
-	case commandHello:
-		if err := c.client.Client.SendMessage(chatID, msgHello); err != nil {
-			return errors.WrapIfErr("failed sendMessage", err)
-		}
+	case commandStart:
+		c.sendMessage(chatID, msgStart)
 
 	case commandPickRandom:
-		page, err := c.internalBasePath.PickRandom() // chatID ?
+		contentPage, err := c.internalBasePath.PickRandom()
 		if err != nil {
 			return errors.WrapIfErr("failed PickRandom", err)
 		}
-		if err := c.client.Client.SendMessage(chatID, page.TextPage); err != nil {
-			return errors.WrapIfErr("failed sendMessage", err)
+		if contentPage == "" {
+			c.sendMessage(chatID, msgNotExist)
 		}
-		err = c.internalBasePath.Remove(page)
+		c.sendMessage(chatID, contentPage)
+		err = c.internalBasePath.Remove(contentPage)
 		if err != nil {
 			return errors.WrapIfErr("failed Remove", err)
 		}
 
 	case commandDelete:
-		if err := c.client.Client.SendMessage(chatID, msgDeleteInfo); err != nil {
-			return errors.WrapIfErr("failed sendMessage", err)
-		}
+		c.sendMessage(chatID, msgDeleteInfo)
 		//event := events.Event{
 		//	TextPage: textPage,
 		//	Type: events.Message,
@@ -63,6 +63,7 @@ func (c *Consumer) doCMD(chatID int, textPage string) error {
 		//}
 
 	default:
+		log.Printf("Получена ссылка: %s", tPage)
 		if err := c.savePage(tPage, chatID); err != nil {
 			return errors.WrapIfErr("failed savePage", err)
 		}
@@ -80,29 +81,28 @@ func (c *Consumer) savePage(textPage string, chatID int) error {
 		TextPage: textPage,
 	}
 	if resIsUrl == true {
+		log.Println("Это url")
 		resIsExist, err := c.internalBasePath.IsExist(page)
 		if err != nil {
 			return errors.WrapIfErr("failed isExist", err)
 		}
 
 		if resIsExist == true {
-			if err := c.client.Client.SendMessage(chatID, msgIsExist); err != nil {
-				return errors.WrapIfErr("failed sendMessage", err)
-			}
+			log.Println("Такой url уже есть")
+			c.sendMessage(chatID, msgIsExist)
 		}
 		if resIsExist == false {
+			log.Println("Такого url еще нет, пробуем сохранить")
 			if err := c.internalBasePath.Save(page); err != nil {
 				return errors.WrapIfErr("failed save doCMD", err)
 			}
-			if err := c.client.Client.SendMessage(chatID, msgOk); err != nil {
-				return errors.WrapIfErr("failed sendMessage", err)
-			}
+			log.Println("Сохранили url, пробуем отправить сообщение что успешно сохранено")
+			c.sendMessage(chatID, msgOk)
 		}
 	}
 	if resIsUrl == false {
-		if err := c.client.Client.SendMessage(chatID, msgUnknownType); err != nil {
-			return errors.WrapIfErr("failed sendMessage", err)
-		}
+		log.Println("Это не url")
+		c.sendMessage(chatID, msgUnknownType)
 	}
 	return nil
 }
@@ -110,7 +110,15 @@ func (c *Consumer) savePage(textPage string, chatID int) error {
 func isUrl(textPage string) (bool, error) {
 	u, err := url.Parse(textPage)
 	if err != nil {
-		return false, errors.WrapIfErr("failed url.Parse", err)
+		return false, nil
+		//return false, errors.WrapIfErr("failed url.Parse", err)
 	}
 	return (u.Scheme == "http" || u.Scheme == "Http" || u.Scheme == "https" || u.Scheme == "Https") && u.Host != "", nil
+}
+
+func (c *Consumer) sendMessage(chatID int, msg string) error {
+	if err := c.client.Client.SendMessage(chatID, msg); err != nil {
+		return errors.WrapIfErr("failed sendMessage", err)
+	}
+	return nil
 }

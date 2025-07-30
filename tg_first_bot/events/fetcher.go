@@ -11,6 +11,10 @@ func (p *EventProcessor) Fetch(limit int) (res []Event, err error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if len(upd) == 0 {
+		return nil, nil
+	}
 	p.offset = upd[len(upd)-1].UpdateID + 1
 
 	res = make([]Event, 0, len(upd))
