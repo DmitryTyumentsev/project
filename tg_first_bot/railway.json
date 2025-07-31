@@ -1,7 +1,9 @@
 {
   "build": {
-    "builder": "DOCKERFILE",
-    "dockerfilePath": "Dockerfile"
+    "builder": "NIXPACKS",
+    "baseDirectory": "tg_first_bot",
+    "buildCommand": "cd tg_first_bot && go build -o bot",
+    "startCommand": "cd tg_first_bot && ./bot"
   },
   "deploy": {
     "startCommand": "./bot"
