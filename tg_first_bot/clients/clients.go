@@ -69,7 +69,7 @@ func (c *Client) SendMessage(chatID int, text string) error {
 }
 
 func (c *Client) doRequest(query url.Values, method string) (data []byte, err error) {
-	log.Println("Начинаем выполнять doRequest...")
+	//log.Println("Начинаем выполнять doRequest...")
 	defer func() { err = errors.WrapIfErr("failed func doRequest", err) }()
 
 	u := url.URL{

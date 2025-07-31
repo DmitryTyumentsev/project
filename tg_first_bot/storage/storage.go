@@ -10,22 +10,24 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 const (
-	perm = 0644
+	perm = 0755
 )
 
 func (b InternalBasePath) Save(p Page) error {
+	fPath := filepath.Join(b.BasePath, strconv.Itoa(p.ChatID))
+	if err := os.MkdirAll(fPath, perm); err != nil {
+		return errors.WrapIfErr("failed MkdirAll", err)
+	}
 	fName, _ := hash(p)
 	if fName == "" {
 		return errors2.New("fName is empty")
 	}
-	if err := os.MkdirAll(b.BasePath, perm); err != nil {
-		return errors.WrapIfErr("failed MkdirAll", err)
-	}
-	fPath := filepath.Join(b.BasePath, fName)
-	file, err := os.Create(fPath)
+	fullPath := filepath.Join(fPath, fName)
+	file, err := os.Create(fullPath)
 	if err != nil {
 		return errors.WrapIfErr("failed create file", err)
 	}
@@ -40,46 +42,68 @@ func (b InternalBasePath) Save(p Page) error {
 	return nil
 }
 
-func (b InternalBasePath) PickRandom() (string, error) {
-	files, err := os.ReadDir(b.BasePath)
+func (b InternalBasePath) PickRandom(ChatID int) (*Page, error) {
+	dirPath := filepath.Join(b.BasePath, strconv.Itoa(ChatID))
+	files, err := os.ReadDir(dirPath)
 	if err != nil {
-		return "", errors.WrapIfErr("failed ReadDir", err)
+		log.Printf("failed ReadDir %x", err)
+		return nil, nil
 	}
 	if len(files) == 0 {
-		return "", nil
+		return nil, nil
 	}
 
 	n := len(files)
 	file := files[rand.Intn(n)]
-	fPath := filepath.Join(b.BasePath, file.Name())
+	fPath := filepath.Join(dirPath, file.Name())
 
 	f, err := os.ReadFile(fPath)
 	if err != nil {
-		return "", fmt.Errorf("failed ReadFile %x", err)
+		log.Printf("failed ReadFile %x", err)
+		return nil, nil
 	}
 	log.Printf("Метод PickRandom, готовим к отправке TextHref: %s", string(f))
+	p := Page{
+		ChatID:   ChatID,
+		TextPage: string(f),
+	}
 
-	return string(f), nil
+	return &p, nil
 }
 
-func (b InternalBasePath) IsExist(p Page) (bool, error) {
-	fName, _ := hash(p)
-	if fName == "" {
-		return false, errors2.New("fName is empty")
-	}
-	fPath := filepath.Join(b.BasePath, fName)
-	_, err := os.Stat(fPath)
+func (b InternalBasePath) IsExist(p *Page) (bool, error) {
+	dirPath := filepath.Join(b.BasePath, strconv.Itoa(p.ChatID))
+	files, err := os.ReadDir(dirPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, errors.WrapIfErr("failed to check path", err)
+		log.Printf("failed read at directory %s:, %w", dirPath, err)
+		return false, nil
 	}
-	return true, nil
+	if len(files) == 0 {
+		log.Println("files were not found in this directory")
+		return false, nil
+	}
+
+	for _, file := range files {
+		fPath := filepath.Join(dirPath, file.Name())
+		contentFile, err := os.ReadFile(fPath)
+		if string(contentFile) == "" {
+			return false, errors2.New("contentFile is empty")
+		}
+		if err != nil {
+			return false, fmt.Errorf("failed os.ReadFile %w", err)
+		}
+		if string(contentFile) == p.TextPage {
+			return true, nil
+		}
+		continue
+	}
+
+	return false, nil
 }
 
-func (b InternalBasePath) Remove(contentPage string) error {
-	files, err := os.ReadDir(b.BasePath)
+func (b InternalBasePath) Remove(p *Page) error {
+	dirPath := filepath.Join(b.BasePath, strconv.Itoa(p.ChatID))
+	files, err := os.ReadDir(dirPath)
 	if err != nil {
 		return errors.WrapIfErr("failed ReadDir", err)
 	}
@@ -89,16 +113,16 @@ func (b InternalBasePath) Remove(contentPage string) error {
 	}
 
 	for _, file := range files {
-		fPath := filepath.Join(b.BasePath, file.Name())
+		fPath := filepath.Join(dirPath, file.Name())
 		contentFile, err := os.ReadFile(fPath)
 		if string(contentFile) == "" {
-			return errors2.New("fName is empty")
+			return errors2.New("contentFile is empty")
 		}
 		if err != nil {
-			return fmt.Errorf("failed os.ReadFile %x", err)
+			return fmt.Errorf("failed os.ReadFile %w", err)
 		}
-		if string(contentFile) == contentPage {
-			if err := os.Remove(fPath); err != nil {
+		if string(contentFile) == p.TextPage {
+			if err = os.Remove(fPath); err != nil {
 				return errors.WrapIfErr("couldn't delete the file", err)
 			}
 		}

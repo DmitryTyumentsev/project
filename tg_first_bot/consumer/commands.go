@@ -12,10 +12,9 @@ const (
 	commandStart      = "/start"
 	commandPickRandom = "/random"
 	commandDelete     = "/delete"
-	msgStart          = "Привет! Сейчас бот умеет сохранять ссылки и возвращать рандомно одну из сохраненных раз в неделю. \n\n" +
-		"Если хочешь получить ссылку не дожидаясь недели, отправь команду /random . \n\n" +
-		"Если хочешь удалить сохраненную ссылку, отправь команду /delete (в разработке). \n\n" +
-		"Если бот прислал ссылку, она автоматически будет удалена"
+	msgStart          = "Привет! Сейчас бот умеет сохранять ссылки и возвращать рандомно одну из сохраненных с помощью команды /random \n\n" +
+		"Если бот прислал ссылку, она автоматически будет удалена. \n\n" +
+		"Если хочешь удалить сохраненную ссылку, отправь команду /delete (в разработке)"
 	msgOk = "Ссылка успешно сохранена"
 	//msgDeleteOk    = "Ссылка успешно удалена"
 	msgDeleteInfo  = "Пришлите ссылку которую нужно удалить"
@@ -30,24 +29,24 @@ func (c *Consumer) doCMD(chatID int, textPage string) error {
 
 	switch tPage {
 	case commandStart:
-		c.sendMessage(chatID, msgStart)
+		_ = c.sendMessage(chatID, msgStart)
 
 	case commandPickRandom:
-		contentPage, err := c.internalBasePath.PickRandom()
+		page, err := c.internalBasePath.PickRandom(chatID)
 		if err != nil {
 			return errors.WrapIfErr("failed PickRandom", err)
 		}
-		if contentPage == "" {
-			c.sendMessage(chatID, msgNotExist)
+		if page == nil {
+			return c.sendMessage(chatID, msgNotExist)
 		}
-		c.sendMessage(chatID, contentPage)
-		err = c.internalBasePath.Remove(contentPage)
+		_ = c.sendMessage(chatID, page.TextPage)
+		err = c.internalBasePath.Remove(page)
 		if err != nil {
 			return errors.WrapIfErr("failed Remove", err)
 		}
 
 	case commandDelete:
-		c.sendMessage(chatID, msgDeleteInfo)
+		_ = c.sendMessage(chatID, msgDeleteInfo)
 		//event := events.Event{
 		//	TextPage: textPage,
 		//	Type: events.Message,
@@ -82,14 +81,14 @@ func (c *Consumer) savePage(textPage string, chatID int) error {
 	}
 	if resIsUrl == true {
 		log.Println("Это url")
-		resIsExist, err := c.internalBasePath.IsExist(page)
+		resIsExist, err := c.internalBasePath.IsExist(&page)
 		if err != nil {
 			return errors.WrapIfErr("failed isExist", err)
 		}
 
 		if resIsExist == true {
 			log.Println("Такой url уже есть")
-			c.sendMessage(chatID, msgIsExist)
+			_ = c.sendMessage(chatID, msgIsExist)
 		}
 		if resIsExist == false {
 			log.Println("Такого url еще нет, пробуем сохранить")
@@ -97,12 +96,12 @@ func (c *Consumer) savePage(textPage string, chatID int) error {
 				return errors.WrapIfErr("failed save doCMD", err)
 			}
 			log.Println("Сохранили url, пробуем отправить сообщение что успешно сохранено")
-			c.sendMessage(chatID, msgOk)
+			_ = c.sendMessage(chatID, msgOk)
 		}
 	}
 	if resIsUrl == false {
 		log.Println("Это не url")
-		c.sendMessage(chatID, msgUnknownType)
+		_ = c.sendMessage(chatID, msgUnknownType)
 	}
 	return nil
 }
